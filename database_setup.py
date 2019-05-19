@@ -36,6 +36,7 @@ class Option(Base):
     strike = Column(Numeric, primary_key=True)
     bid = Column(Numeric)
     ask = Column(Numeric)
+    volume = Column(Numeric)
     last_updated_date = Column(Date, nullable=False)
     stock = relationship(Stock)
 
@@ -50,6 +51,7 @@ class OptionHistory(Base):
     strike = Column(Numeric, primary_key=True)
     bid = Column(Numeric)
     ask = Column(Numeric)
+    volume = Column(Integer)
     last_updated_date = Column(Date, nullable=False)
     stock = relationship(Stock)
 
