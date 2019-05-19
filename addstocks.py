@@ -14,6 +14,7 @@ from web_util import *
 import re
 import pandas as pd
 import numpy as np
+from decimal import Decimal
 
 def startSession(db):
     engine = create_engine(db)
@@ -34,18 +35,40 @@ def startSession(db):
 
 def batchAddStock(session, stock_list):
     # Add various public stocks
-    cnt = 0
+    # or update key data once a day
+    cnt_added = 0
+    cnt_updated = 0
 
     for ticker in stock_list:
         try:
-            session.add(Stock(ticker=ticker, last_updated_date=date.today()))
-            session.commit()
-            cnt += 1
+            stock = (session.query(Stock)
+                            .filter(Stock.ticker==ticker)
+                            .one_or_none()
+                            )
+            if stock is None or stock.last_updated_date < date.today():
+                key_data = getKeyStockData(ticker)
+                time.sleep(1)
+                if stock is None:
+                    stock = Stock(ticker=ticker,
+                                  dividend=key_data['Dividend'],
+                                  eps=key_data['EPS'],
+                                  price=key_data['Price'],
+                                  last_updated_date=date.today())
+                    cnt_added += 1
+                else:
+                    stock.dividend=key_data['Dividend']
+                    stock.eps=key_data['EPS']
+                    stock.price=key_data['Price']
+                    stock.last_updated_date = date.today()
+                    cnt_updated += 1
+                session.add(stock)
+                session.commit()
+
         except IntegrityError as ex:
             session.rollback()
             print(ex.args, "ticker: ", ticker)
 
-    print("added {} stocks to stockinvestment.db".format(cnt))
+    print("added {} stocks to stockinvestment.db and updated {} stocks".format(cnt_added, cnt_updated))
 
 def batchAddStockHistory(session, full_ticker_list):
     # only get data for tickers that have not been updated today
@@ -92,6 +115,46 @@ def batchAddStockHistory(session, full_ticker_list):
             print(ex.args, "ticker: ", stock_history.ticker, "ds: ", stock_history.ds)
     print("added {} historical stock prices to stockinvestment.db".format(cnt))
 
+
+def getKeyStockData(ticker):
+    stock_url = "https://www.nasdaq.com/symbol/{}".format(ticker)
+    page_content = simple_get(stock_url)
+    html = BeautifulSoup(page_content, 'html.parser')
+
+    table_rows = html.find_all("div", class_="table-row")
+    is_dividend_next = False
+    is_eps_next = False
+
+    dividend_text = ""
+    eps_text = ""
+    for tr in table_rows:
+        for cell in tr.find_all("div", class_="table-cell"):
+            if is_dividend_next:
+                dividend_text = cell.text.strip()
+                is_dividend_next = False
+            if is_eps_next:
+                eps_text = cell.text.strip()
+                is_eps_next = False
+            elif cell.text.strip() == "Annualized Dividend":
+                is_dividend_next = True
+            elif cell.text.strip() == "Earnings Per Share (EPS)":
+                is_eps_next = True
+
+    key_data = {"Ticker": ticker.upper(),
+                "Dividend": 0,
+                "EPS": 0,
+                "Price": 0}
+
+    match = re.search(r'\d*[\.]?\d+', dividend_text)
+    if match:
+        key_data["Dividend"] = Decimal(match.group())
+
+    match = re.search(r'\d+[\.]?\d+', eps_text)
+    if match:
+        key_data["EPS"] = Decimal(match.group())
+    key_data["Price"] = Decimal(html.find(id="qwidget_lastsale").string.replace("$", ""))
+
+    return key_data
 
 def getOptionData(ticker):
     base_url = "https://www.nasdaq.com/symbol/{}/option-chain".format(ticker)
@@ -196,7 +259,7 @@ if __name__ == '__main__':
     batchAddStock(session, ticker_list)
 
     # add historical data
-    batchAddStockHistory(session, ticker_list)
+    #batchAddStockHistory(session, ticker_list)
 
     # add options data
-    batchAddOption(session, ticker_list)
+    #batchAddOption(session, ticker_list)
