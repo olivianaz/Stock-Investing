@@ -209,7 +209,7 @@ def batchAddOption(session, full_ticker_list):
                 .having(func.max(Option.last_updated_date)==date.today())
         )
 
-    tickers_updated_today = [result[0] for result in q.all()]
+    tickers_updated_today = [] #[result[0] for result in q.all()]
     ticker_list = [ticker for ticker in full_ticker_list if ticker not in tickers_updated_today]
 
 
@@ -237,7 +237,15 @@ def batchAddOption(session, full_ticker_list):
 
     cnt = 0
     for rec in option_list:
-        option = Option(ticker=rec[0],
+        option = (session.query(Option)
+                        .filter(Option.ticker==rec[0])
+                        .filter(Option.expiration_date==rec[1])
+                        .filter(Option.option_type==rec[6])
+                        .filter(Option.strike==rec[2])
+                        .one_or_none()
+                        )
+        if option is None:
+            option = Option(ticker=rec[0],
                         expiration_date=rec[1],
                         strike=rec[2],
                         bid=rec[3],
@@ -246,6 +254,12 @@ def batchAddOption(session, full_ticker_list):
                         option_type=rec[6],
                         last_updated_date=date.today()
                         )
+        else:
+            print("Option already exists: , updating to ", rec)
+            option.bid=rec[3]
+            option.ask=rec[4]
+            option.volume=rec[5]
+            option.last_updated_date=date.today()
 
         try:
             session.add(option)
@@ -267,7 +281,7 @@ def updateOptionHistory(session):
     for rec in past_records:
         option_history = (session.query(OptionHistory)
                                  .filter(OptionHistory.ticker==rec.ticker)
-                                 .filter(OptionHistory.option_type==rec.option_type)
+                                 .filter(OptionHistory.ds==rec.last_updated_date)
                                  .filter(OptionHistory.expiration_date==rec.expiration_date)
                                  .filter(OptionHistory.option_type==rec.option_type)
                                  .filter(OptionHistory.strike==rec.strike)
@@ -295,12 +309,13 @@ def updateOptionHistory(session):
 
 if __name__ == '__main__':
     # add stocks to db
-    ticker_list = ['LYFT', 'FB', 'XLNX', 'WFC', 'ABBV', 'SYF', 'SRG']
+    ticker_list = ['LYFT', 'FB', 'XLNX', 'WFC', 'ABBV', 'SYF', 'SRG', 'PINS', 'JPM', 'CVS', 'AAPL', 'ABBV', 'AXP']
     session = startSession('sqlite:///stockinvestment.db')
     batchAddStock(session, ticker_list)
 
     # add historical data
-    batchAddStockHistory(session, ticker_list)
+    ## comment out for now, this can be done once a month instead to reduce API calls/month
+    #batchAddStockHistory(session, ticker_list)
 
     # add options data
     batchAddOption(session, ticker_list)
