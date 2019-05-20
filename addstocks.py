@@ -99,11 +99,17 @@ def batchAddStockHistory(session, full_ticker_list):
         time_series = json_dict[ticker]['Time Series (Daily)']
         for ds in time_series:
             price = time_series[ds]['5. adjusted close']
-            stock_history = StockHistory(ticker=ticker,
-                                         ds=datetime.strptime(ds, "%Y-%m-%d").date(),
-                                         price=price,
-                                         last_updated_date = date.today())
-            stock_history_list.append(stock_history)
+            stock_history = (session.query(StockHistory)
+                                    .filter(StockHistory.ticker==ticker)
+                                    .filter(StockHistory.ds==datetime.strptime(ds, "%Y-%m-%d").date())
+                                    .one_or_none()
+                                    )
+            if stock_history is None:
+                stock_history = StockHistory(ticker=ticker,
+                                             ds=datetime.strptime(ds, "%Y-%m-%d").date(),
+                                             price=price,
+                                             last_updated_date = date.today())
+                stock_history_list.append(stock_history)
     cnt = 0
     for stock_history in stock_history_list:
         try:
@@ -251,6 +257,41 @@ def batchAddOption(session, full_ticker_list):
 
     print("added {} option data to stockinvestment.db".format(cnt))
 
+def updateOptionHistory(session):
+    # get records in Option table that were last updated in the past
+    # and put in OptionHistory table
+    past_records = (session.query(Option)
+                          .filter(Option.last_updated_date < date.today()).all()
+                          )
+    cnt = 0
+    for rec in past_records:
+        option_history = (session.query(OptionHistory)
+                                 .filter(OptionHistory.ticker==rec.ticker)
+                                 .filter(OptionHistory.option_type==rec.option_type)
+                                 .filter(OptionHistory.expiration_date==rec.expiration_date)
+                                 .filter(OptionHistory.option_type==rec.option_type)
+                                 .filter(OptionHistory.strike==rec.strike)
+                                 ).one_or_none()
+        if option_history is None:
+            try:
+                session.add(OptionHistory(
+                                ds=rec.last_updated_date,
+                                ticker=rec.ticker,
+                                option_type=rec.option_type,
+                                expiration_date=rec.expiration_date,
+                                strike=rec.strike,
+                                bid=rec.bid,
+                                ask=rec.ask,
+                                volume=rec.volume,
+                                last_updated_date=date.today()
+
+                ))
+                session.commit()
+                cnt += 1
+            except IntegrityError as ex:
+                session.rollback()
+                print(ex.args, rec)
+    print("added {} historical option data to stockinvestment.db".format(cnt))
 
 if __name__ == '__main__':
     # add stocks to db
@@ -259,7 +300,7 @@ if __name__ == '__main__':
     batchAddStock(session, ticker_list)
 
     # add historical data
-    #batchAddStockHistory(session, ticker_list)
+    batchAddStockHistory(session, ticker_list)
 
     # add options data
-    #batchAddOption(session, ticker_list)
+    batchAddOption(session, ticker_list)

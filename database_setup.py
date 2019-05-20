@@ -40,6 +40,16 @@ class Option(Base):
     last_updated_date = Column(Date, nullable=False)
     stock = relationship(Stock)
 
+    def __str__(self):
+        str = "ticker: {}\n".format(self.ticker)
+        str += "option_type: {}\n".format(self.option_type)
+        str += "expiration_date: {}\n".format(self.expiration_date)
+        str += "strike: {}\n".format(self.strike)
+        str += "bid - ask: {} - {}\n".format(self.bid, self.ask)
+        str += "volume: {}\n".format(self.volume)
+        str += "last_updated_date: {}\n".format(self.last_updated_date)
+        return str
+
 
 class OptionHistory(Base):
     __tablename__ = 'option_history'
@@ -51,7 +61,7 @@ class OptionHistory(Base):
     strike = Column(Numeric, primary_key=True)
     bid = Column(Numeric)
     ask = Column(Numeric)
-    volume = Column(Integer)
+    volume = Column(Numeric)
     last_updated_date = Column(Date, nullable=False)
     stock = relationship(Stock)
 
